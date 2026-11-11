@@ -4,7 +4,7 @@ The AI service for the Webnion website. It answers visitors' questions about Web
 the team write blog posts with pictures. It is written in Python with LangChain and LangGraph, traced with LangSmith, and
 searches the site's content through Pinecone.
 
-Status: plan agreed on 2026-11-12, with Hugging Face and OpenAI-compatible providers added the same day. Nothing built yet. Each phase in section 12 ends with something that works on its own.
+Status: plan agreed on 2026-11-12, with Hugging Face and OpenAI-compatible providers added the same day. Phases 0 to 6 were built on 2026-11-12; real providers and Pinecone are checked once the owner enters keys in AI Settings. Translation runs as its own request (`/v1/blog/translate`) to stay inside the five-minute limit.
 
 ## 1. Decisions
 

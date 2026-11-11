@@ -374,6 +374,9 @@ async def run_translate(request: TranslateRequest):
                 reply = await model.ainvoke([SystemMessage(TRANSLATE_SYSTEM), HumanMessage(to_markdown(text_blocks))])
             done += 1
             translated = parse_article(text_of(reply)) or text_blocks
+            # Some models drop the "## " marker. A short first line where the source had a heading is that heading.
+            if text_blocks[0]["type"] == "heading" and translated[0]["type"] == "paragraph" and len(translated[0]["text"]) <= 150:
+                translated[0] = {"type": "heading", "text": translated[0]["text"]}
             # Pictures stay where they were: after the section heading, or first when the section has none
             if images:
                 position = 1 if translated and translated[0]["type"] == "heading" else 0

@@ -71,6 +71,10 @@ class FakeChatModel(BaseChatModel):
             parsed = json.loads(schema.group(1))
             return AIMessage(content=json.dumps(_example(parsed, parsed.get("$defs", {}))), usage_metadata=usage)
 
+        named = next((name for name in self.tool_names if name in last and name != "propose_inquiry"), None)
+        if named:
+            return AIMessage(content="", tool_calls=[{"name": named, "args": {"city": "Dhaka"}, "id": "fake-call-0"}], usage_metadata=usage)
+
         if self.tool_names and _EMAIL.search(last):
             email = _EMAIL.search(last).group(0)
             args = {"name": "Test Visitor", "email": email, "phone": "", "service": "", "message": last[:500]}
