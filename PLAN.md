@@ -4,7 +4,7 @@ The AI service for the Webnion website. It answers visitors' questions about Web
 the team write blog posts with pictures. It is written in Python with LangChain and LangGraph, traced with LangSmith, and
 searches the site's content through Pinecone.
 
-Status: plan agreed on 2026-11-12, nothing built yet. Each phase in section 12 ends with something that works on its own.
+Status: plan agreed on 2026-11-12, with Hugging Face and OpenAI-compatible providers added the same day. Nothing built yet. Each phase in section 12 ends with something that works on its own.
 
 ## 1. Decisions
 
@@ -14,7 +14,7 @@ Taken with the owner on 2026-11-12:
 | --- | --- |
 | What the chatbot on the public site does | Answers questions about Webnion from the site's own content (RAG) and can send an inquiry from the chat. It does **not** write blogs or make pictures for visitors, because that costs money per use and invites abuse. |
 | Where generated blogs go | A new Blog section on the website (`/en/blog`, `/bn/blog`). The AI writes a **draft**; an admin reviews and edits it, then publishes. |
-| Which AI provider | Any provider. In the admin panel the owner picks a provider, types a model name and pastes an API key. LangChain connects to it. |
+| Which AI provider | Any provider. In the admin panel the owner picks a provider, types a model name and pastes an API key. LangChain connects to it. Hugging Face is one of the providers, and an OpenAI-compatible option with a base address covers providers not in the list. |
 | Where the Python service runs | Vercel, in the same Singapore region as the API. |
 | Vector database | Pinecone. |
 
@@ -23,13 +23,14 @@ Taken with the owner on 2026-11-12:
 - Turn the whole chatbot on or off.
 - Choose where it appears: **on the public site**, **in the admin panel**, or both.
 - Turn single features on or off: site Q&A, inquiries from the chat, blog writing, picture generation.
-- For each job, choose the provider, type the model name and paste the API key:
+- For each job, choose the provider, type the model name and paste the API key (and, for an OpenAI-compatible provider, its base address):
   - chat model for visitors (fast and cheap is best),
   - writing model for blogs (stronger),
   - picture model,
   - embedding model for Pinecone search.
 - Paste the Pinecone key and index name, and optionally a LangSmith key and project name.
-- Press **Test** next to each model to check the key and the model name before saving.
+- Press **Test** next to each model to check the key and the model name before saving. Test also reports what the model can do
+  (section 4.2).
 - Set limits: messages per visitor per day, blogs per day, pictures per blog.
 - Edit the assistant's greeting, the suggested questions and its tone, in English and Bangla.
 - Open **AI Studio**, give a topic, approve or change the outline, and get a full draft with a cover picture and inline pictures,
@@ -42,8 +43,8 @@ Every change is written to the existing Activity Log.
 ## 3. How the pieces fit
 
 ```
-Visitor's browser ─┐                                         ┌─> LLM providers (OpenAI, Anthropic, Google, ...)
-                   │                                         ├─> Picture providers (OpenAI, Google, ...)
+Visitor's browser ─┐                                         ┌─> LLM providers (OpenAI, Anthropic, Google, Hugging Face, ...)
+                   │                                         ├─> Picture providers (OpenAI, Google, Hugging Face)
 Admin's browser ───┼─> Next.js site ─> Express API ─> AI service (this repo, FastAPI + LangGraph)
                    │   (webnion_frontend) (webnion_backend)   ├─> Pinecone (search index)
                    │                       │                 └─> LangSmith (traces)
@@ -71,9 +72,50 @@ model = init_chat_model(settings.model, model_provider=settings.provider, api_ke
 
 | Job | Providers in the first version | Notes |
 | --- | --- | --- |
-| Chat and writing | `openai`, `anthropic`, `google_genai`, `groq`, `mistralai` | Any model name that provider accepts. The **Test** button sends one short message to check it. |
-| Pictures | OpenAI image models, Google image models | Claude does not make pictures, so a picture provider is always separate. |
-| Embeddings | OpenAI, Google, Cohere | Anthropic has no embedding model. The model's vector size must match the Pinecone index (section 6). |
+| Chat and writing | `openai`, `anthropic`, `google_genai`, `groq`, `mistralai`, `huggingface`, OpenAI-compatible | Any model name that provider accepts. The **Test** button sends one short message to check it. |
+| Pictures | OpenAI, Google, Hugging Face | Claude does not make pictures, so a picture provider is always separate. |
+| Embeddings | OpenAI, Google, Cohere, Hugging Face, OpenAI-compatible | Anthropic has no embedding model. The model's vector size must match the Pinecone index (section 6). |
+
+One key can cover every job: a single OpenAI, Google or Hugging Face key runs chat, writing, pictures and embeddings.
+
+### 4.1 Hugging Face
+
+Through the `langchain-huggingface` package and the `huggingface_hub` client, with a Hugging Face access token.
+
+- **Chat and writing**: `ChatHuggingFace` over `HuggingFaceEndpoint`, with the model id the admin types, such as
+  `org/model-name`.
+- **Embeddings**: `HuggingFaceEndpointEmbeddings`. Multilingual models such as `BAAI/bge-m3` handle Bangla well.
+- **Pictures**: `InferenceClient.text_to_image` with a text-to-image model id.
+- **Where models run**: on Hugging Face's hosted inference (Inference Providers), or on a dedicated Inference Endpoint whose
+  address the admin pastes. Models are never run inside this service: Vercel has no GPU and limits a function's size.
+- **Costs**: hosted inference includes a small free allowance and then bills the Hugging Face account. Dedicated endpoints bill
+  by the hour while running.
+- **Not every model is deployed for inference.** Test tells the admin when a model id exists but cannot be called.
+
+### 4.2 What Test checks
+
+Open models differ in what they support, so Test reports more than "works":
+
+- **Answers**: the key and model reply to a short message.
+- **Tool calling**: the model can call the inquiry tool. Without it, the site assistant still answers questions, but offers the
+  inquiry form link instead of taking the inquiry in the chat.
+- **Structured output**: needed by the blog writer for outlines and SEO fields. Without it, the writer asks for JSON in the
+  prompt and validates it, retrying once.
+- **Embedding size**, for embedding models, so the index can be created or a rebuild suggested.
+- **Picture generation**, for picture models, with one small test picture.
+
+The result is stored with the settings, so the service picks the right path without testing again on every request.
+
+### 4.3 OpenAI-compatible providers
+
+Many providers, such as DeepSeek, OpenRouter, Together, Fireworks and Hugging Face's own router, accept requests in OpenAI's
+format at their own address. Choosing **OpenAI-compatible** shows a **base address** field next to the model name and key, and
+the service connects with LangChain's OpenAI client pointed at that address. New providers of this kind then need no code
+changes.
+
+To stop the base address being used to reach internal systems (server-side request forgery), the Express API accepts only
+`https://` addresses that resolve to public IP addresses, refusing `localhost`, private and link-local ranges, and the AI
+service checks again before connecting.
 
 Provider details the code must handle:
 
@@ -84,6 +126,8 @@ Provider details the code must handle:
 - **All providers.** Errors are sorted into wrong key, unknown model, rate limit and provider down. The admin sees a plain
   message, and the visitor sees "The assistant is busy, please try WhatsApp or the contact form".
 - **Model names change.** Nothing is hard-coded. The admin types the name, and the Test button confirms it works.
+- **Hugging Face models load on demand.** A model that has not been called for a while can answer slowly or report that it is
+  loading. The service waits and retries once with a clear progress message, within Vercel's time limit.
 
 ## 5. The two assistants (LangGraph)
 
@@ -185,6 +229,8 @@ webnion_rag_agent/
       chat.py                 Chat models from provider + name + key (init_chat_model)
       images.py               Picture models per provider
       embeddings.py           Embedding models per provider
+      capabilities.py         The checks behind the Test button (section 4.2)
+      safe_url.py             Public-address check for OpenAI-compatible base addresses
       errors.py               Turns provider errors into plain messages
     rag/
       documents.py            Turns site records into passages with metadata
@@ -223,6 +269,7 @@ Endpoints, all signed by the Express API:
   - a message length limit,
   - answers limited to Webnion topics,
   - inquiries sent only after the visitor confirms.
+- **Base addresses** for OpenAI-compatible providers must be public `https://` addresses (section 4.3).
 - **Prompt injection**: site content and visitor text are passed as data in clearly marked blocks. The only action the public
   assistant can take is creating an inquiry, after confirmation.
 - **Generated content** is always a draft that a person reviews before it goes live.
@@ -259,7 +306,7 @@ Each phase is pushed, deployed and tested before the next starts.
 | Phase | Delivers | Done when |
 | --- | --- | --- |
 | 0. Skeleton | uv project, FastAPI app, signed requests, `/health`, tests and lint, deployed to Vercel | `/health` answers on Vercel and an unsigned call is refused |
-| 1. AI settings | Encrypted settings in the Express API, the AI Settings screen with Test buttons, on/off and placement switches | The owner saves a key and model, and Test reports success or a clear error |
+| 1. AI settings | Encrypted settings in the Express API, the AI Settings screen with Test buttons and capability checks, Hugging Face and OpenAI-compatible providers, on/off and placement switches | The owner saves a key and model for each provider type, and Test reports what works or a clear error |
 | 2. Search index | Passages from site content, Pinecone upsert, delete and search, Rebuild button, updates on save, nightly check | A search for "ecommerce price" returns the pricing and e-commerce service passages |
 | 3. Site assistant | The graph in 5.1, streamed chat, the widget on the site and in admin, inquiries from chat, rate limits | A visitor asks in Bangla and gets a correct Bangla answer with links; a confirmed lead appears under Inquiries |
 | 4. Blog section | `BlogPost` model, public blog pages, Blog admin screen, homepage section, menu link | A hand-written post can be published and read in both languages |
@@ -268,8 +315,8 @@ Each phase is pushed, deployed and tested before the next starts.
 
 ## 13. What the owner needs to provide
 
-1. **API keys** for at least one chat and writing provider, a picture provider (OpenAI or Google) and an embedding provider.
-   With one OpenAI key, or one Google key, everything can run on a single provider.
+1. **API keys** for at least one chat and writing provider, a picture provider (OpenAI, Google or Hugging Face) and an embedding
+   provider. With one OpenAI, Google or Hugging Face key, everything can run on a single provider.
 2. **A Pinecone account and API key.** The service creates the index itself.
 3. **Optional**: a LangSmith API key for traces and evaluations.
 4. **An email service** for inquiry emails, as before. Without it, inquiries from the chat still appear under Inquiries.
@@ -278,7 +325,9 @@ Each phase is pushed, deployed and tested before the next starts.
 
 - **Vercel's five-minute limit** fits one blog post when pictures are made in separate calls. A move to an always-on host would
   be needed only for much longer jobs.
-- **Bangla quality** varies by model. The evaluation set includes Bangla questions so a model change can be checked.
+- **Bangla quality** varies by model, and more so among open models on Hugging Face. The evaluation set includes Bangla
+  questions so a model change can be checked.
+- **Open models may lack tool calling or structured output.** Section 4.2 describes the fallbacks.
 - **Picture rights and accuracy**: generated pictures must not imitate client brands. The prompts rule this out, and the
   admin reviews every picture.
 - **Costs** depend on the models chosen. The daily caps and the usage screen keep them visible.
