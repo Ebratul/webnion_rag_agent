@@ -1,0 +1,53 @@
+[project]
+name = "webnion-rag-agent"
+version = "0.1.0"
+description = "AI service for the Webnion website: site assistant, blog writer and search index"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.162",
+    "pydantic>=2.14",
+    "pydantic-settings>=2.16",
+    "httpx>=0.28",
+    "langchain>=1.5",
+    "langchain-core>=1.8",
+    "langgraph>=1.2.20",
+    "langchain-text-splitters>=1.1",
+    "langchain-openai>=1.7.4",
+    "langchain-anthropic>=1.7.10",
+    "langchain-google-genai>=4.4.3",
+    "langchain-groq>=1.1.3",
+    "langchain-mistralai>=1.1.6",
+    "langchain-huggingface>=1.2.3",
+    "huggingface-hub>=1.33",
+    "langsmith>=0.14",
+    "pinecone>=10.3",
+    "openai>=3.49",
+    "google-genai>=3.2",
+    "pillow>=13.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2",
+    "pytest-asyncio>=1.4",
+    "ruff>=0.17",
+    "uvicorn>=0.38",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning", "ignore::UserWarning"]
+
+[tool.ruff]
+line-length = 160
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "BLE", "UP", "S", "ASYNC", "SIM", "RUF"]
+# Long lines are allowed for prompts and messages. "timeout" here is the provider client's setting, not an asyncio timeout.
+ignore = ["S101", "E501", "ASYNC109", "RUF001", "RUF002", "RUF003"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S105", "S106", "S108"]
