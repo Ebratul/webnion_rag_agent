@@ -15,7 +15,8 @@ CHUNK_CHARS = 3000
 OVERLAP_CHARS = 400
 
 _splitter = RecursiveCharacterTextSplitter(chunk_size=CHUNK_CHARS, chunk_overlap=OVERLAP_CHARS, separators=["\n\n", "\n", "। ", ". ", " ", ""])
-_WORD = re.compile(r"\w+", re.UNICODE)
+# \w alone splits Bangla words at their vowel signs (ি, া, ো), so the whole Bengali block counts as word characters
+_WORD = re.compile(r"[\w\u0980-\u09FF]+")
 _BENGALI = re.compile(r"[ঀ-৿]")
 
 

@@ -20,6 +20,12 @@ def test_keyword_search_finds_pricing():
     assert found[0].title == "Starter plan"
 
 
+def test_bangla_words_stay_whole():
+    from app.rag.documents import _tokens
+
+    assert _tokens("আপনারা কি মোবাইল অ্যাপ বানান?") == ["আপনারা", "কি", "মোবাইল", "অ্যাপ", "বানান"]
+
+
 def test_keyword_search_in_bangla():
     found = keyword_search([Document(**item) for item in DOCUMENTS], "মোবাইল অ্যাপ", "bn")
     assert found[0].locale == "bn"

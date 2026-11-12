@@ -121,7 +121,7 @@ class HashingEmbeddings(Embeddings):
 
     def _vector(self, text: str) -> list[float]:
         vector = [0.0] * self.size
-        for word in re.findall(r"\w+", text.lower()):
+        for word in re.findall(r"[\w\u0980-\u09FF]+", text.lower()):
             bucket = int.from_bytes(hashlib.blake2b(word.encode(), digest_size=4).digest(), "big")
             vector[bucket % self.size] += 1.0 if bucket & 1 else -1.0
         norm = math.sqrt(sum(value * value for value in vector)) or 1.0
