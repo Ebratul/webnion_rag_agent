@@ -20,6 +20,16 @@ def test_keyword_search_finds_pricing():
     assert found[0].title == "Starter plan"
 
 
+def test_a_named_record_beats_long_articles():
+    article = "Growth website plan for a beauty store. " * 40
+    documents = [
+        Document(type="case-study", id=str(number), locale="en", title=f"How a store grew {number}", url="/en/case-studies/x", text=article)
+        for number in range(5)
+    ] + [Document(type="pricing", id="growth", locale="en", title="Growth Website", url="/en#pricing", text="Price: Starting 199 USD. For startups.")]
+    found = keyword_search(documents, "How much is the Growth Website plan?", "en")
+    assert found[0].title == "Growth Website"
+
+
 def test_bangla_words_stay_whole():
     from app.rag.documents import _tokens
 

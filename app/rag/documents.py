@@ -101,17 +101,23 @@ def keyword_search(documents: list[Document], query: str, locale: str, top_k: in
     frequency = Counter(term for bag in bags for term in bag.keys() & query_terms)
     total = len(passages)
 
-    def score(bag: Counter[str]) -> float:
+    def idf(term: str) -> float:
+        return math.log(1 + (total - frequency[term] + 0.5) / (frequency[term] + 0.5))
+
+    def score(bag: Counter[str], title: set[str]) -> float:
         length = sum(bag.values()) or 1
         value = 0.0
         for term in query_terms:
             count = bag.get(term, 0)
             if count:
-                idf = math.log(1 + (total - frequency[term] + 0.5) / (frequency[term] + 0.5))
-                value += idf * count * 2.2 / (count + 1.2 * (0.25 + 0.75 * length / average))
+                value += idf(term) * count * 2.2 / (count + 1.2 * (0.25 + 0.75 * length / average))
+        # A question naming a plan, service or project should find that record before long articles that mention it.
+        # Rarity cannot tell them apart when every article says "website", so this counts the share of the title asked about.
+        if title:
+            value += 3.0 * len(title & query_terms) / len(title)
         return value
 
     for passage, bag in zip(passages, bags, strict=True):
-        passage.score = score(bag) * (1.15 if passage.locale == locale else 1.0)
+        passage.score = score(bag, set(_tokens(passage.title))) * (1.15 if passage.locale == locale else 1.0)
     found = sorted((passage for passage in passages if passage.score > 0), key=lambda passage: passage.score, reverse=True)
     return found[:top_k]
