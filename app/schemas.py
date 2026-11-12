@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr, StringConstraints,
 Locale = Literal["en", "bn"]
 ChatProvider = Literal["openai", "anthropic", "google_genai", "groq", "mistralai", "huggingface", "openai_compatible", "fake"]
 EmbeddingProvider = Literal["openai", "google_genai", "mistralai", "huggingface", "openai_compatible", "fake"]
-ImageProvider = Literal["openai", "google_genai", "huggingface", "fake"]
+ImageProvider = Literal["openai", "google_genai", "huggingface", "cloudflare", "fake"]
 
 ModelName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200, pattern=r"^[A-Za-z0-9._:/@+-]+$")]
 ShortText = Annotated[str, StringConstraints(strip_whitespace=True, max_length=300)]
@@ -28,11 +28,15 @@ class ModelConfig(Strict):
     base_url: str | None = Field(default=None, max_length=500)
     # Hugging Face only: which inference provider serves the model, such as "auto"
     hf_provider: Annotated[str, StringConstraints(pattern=r"^[a-z0-9-]{1,40}$")] | None = None
+    # Cloudflare Workers AI only: the account the models run in
+    account_id: Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{32}$")] | None = None
 
     @model_validator(mode="after")
     def _key_needed(self) -> "ModelConfig":
         if self.provider != "fake" and not self.api_key.get_secret_value().strip():
             raise ValueError("An API key is required")
+        if self.provider == "cloudflare" and not self.account_id:
+            raise ValueError("Cloudflare needs the account ID")
         if self.provider == "openai_compatible" and not self.base_url:
             raise ValueError("An OpenAI-compatible provider needs a base address")
         return self

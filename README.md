@@ -49,7 +49,7 @@ EVAL_PROVIDER=openai EVAL_MODEL=gpt-5-mini EVAL_API_KEY=... uv run python -m eva
 | `POST /v1/blog/outline` | Blog step 1 |
 | `POST /v1/blog/write` | Blog step 2, streamed: article, edit pass, SEO fields and a picture plan |
 | `POST /v1/blog/translate` | Bangla version of a draft, streamed |
-| `POST /v1/images` | One picture, returned as WebP |
+| `POST /v1/images` | One picture, returned as WebP (OpenAI, Google, Hugging Face or Cloudflare Workers AI) |
 | `POST /v1/index/upsert`, `/v1/index/delete` | Pinecone updates |
 | `POST /v1/search` | Search test from AI Settings |
 

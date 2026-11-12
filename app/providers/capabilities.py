@@ -62,7 +62,7 @@ async def run_test(request: ModelTestRequest) -> ModelTestResult:
             result.answers = True
             result.dimension = len(vector)
         else:
-            if request.model.provider not in ("openai", "google_genai", "huggingface", "fake"):
+            if request.model.provider not in ("openai", "google_genai", "huggingface", "cloudflare", "fake"):
                 raise ProviderError("not_supported")
             result.answers = True
             if request.make_picture:

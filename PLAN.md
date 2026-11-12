@@ -73,7 +73,7 @@ model = init_chat_model(settings.model, model_provider=settings.provider, api_ke
 | Job | Providers in the first version | Notes |
 | --- | --- | --- |
 | Chat and writing | `openai`, `anthropic`, `google_genai`, `groq`, `mistralai`, `huggingface`, OpenAI-compatible | Any model name that provider accepts. The **Test** button sends one short message to check it. |
-| Pictures | OpenAI, Google, Hugging Face | Claude does not make pictures, so a picture provider is always separate. |
+| Pictures | OpenAI, Google, Hugging Face, Cloudflare Workers AI | Claude does not make pictures, so a picture provider is always separate. |
 | Embeddings | OpenAI, Google, Cohere, Hugging Face, OpenAI-compatible | Anthropic has no embedding model. The model's vector size must match the Pinecone index (section 6). |
 
 One key can cover every job: a single OpenAI, Google or Hugging Face key runs chat, writing, pictures and embeddings.
@@ -91,6 +91,15 @@ Through the `langchain-huggingface` package and the `huggingface_hub` client, wi
 - **Costs**: hosted inference includes a small free allowance and then bills the Hugging Face account. Dedicated endpoints bill
   by the hour while running.
 - **Not every model is deployed for inference.** Test tells the admin when a model id exists but cannot be called.
+
+### 4.1.1 Cloudflare Workers AI (pictures)
+
+Added on 2026-11-12 at the owner's request. Pictures come from Cloudflare's REST API with the admin's **account ID** and an
+API token with the Workers AI permission, for example `@cf/black-forest-labs/flux-1-schnell` (answers with the picture in
+base64 JSON) or `@cf/stabilityai/stable-diffusion-xl-base-1.0` (answers with the picture itself; the size is sent). The
+address is fixed to `api.cloudflare.com`; only a 32-character account ID and a model name of the form `@cf/org/model` go
+into it, checked by both services. Cloudflare's chat and embedding models can use the OpenAI-compatible provider with the
+base address `https://api.cloudflare.com/client/v4/accounts/<account ID>/ai/v1`.
 
 ### 4.2 What Test checks
 

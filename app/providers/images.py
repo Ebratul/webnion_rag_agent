@@ -3,6 +3,8 @@
 import asyncio
 import base64
 import io
+import json
+import re
 from dataclasses import dataclass
 
 import httpx
@@ -118,6 +120,77 @@ async def _huggingface(config: ModelConfig, prompt: str, aspect: str) -> Image.I
     return await client.text_to_image(prompt, model=config.model, width=width, height=height)
 
 
+# Cloudflare Workers AI. The address is fixed: only the account ID and a checked model name go into it.
+CLOUDFLARE_API = "https://api.cloudflare.com/client/v4/accounts"
+_CLOUDFLARE_MODEL = re.compile(r"^@(cf|hf)/[A-Za-z0-9_-][A-Za-z0-9._-]*/[A-Za-z0-9_-][A-Za-z0-9._-]*$")
+# Tests swap in a fake transport
+_cloudflare_transport: httpx.AsyncBaseTransport | None = None
+
+
+def cloudflare_model_ok(model: str) -> bool:
+    return bool(_CLOUDFLARE_MODEL.match(model)) and ".." not in model
+
+
+async def _cloudflare(config: ModelConfig, prompt: str, aspect: str) -> bytes:
+    if not cloudflare_model_ok(config.model) or not config.account_id:
+        raise ProviderError("model", "Cloudflare model names look like @cf/black-forest-labs/flux-1-schnell")
+    # FLUX schnell takes only a prompt and up to 8 steps; the Stable Diffusion family takes a size
+    if "flux-1-schnell" in config.model:
+        body: dict[str, object] = {"prompt": prompt[:2048], "steps": 8}
+    else:
+        width, height = (1344, 768) if aspect == "landscape" else (1024, 1024)
+        body = {"prompt": prompt[:2048], "width": width, "height": height}
+
+    url = f"{CLOUDFLARE_API}/{config.account_id}/ai/run/{config.model}"
+    headers = {"Authorization": f"Bearer {config.api_key.get_secret_value()}"}
+    async with (
+        httpx.AsyncClient(timeout=180, follow_redirects=False, transport=_cloudflare_transport) as client,
+        client.stream("POST", url, json=body, headers=headers) as response,
+    ):
+        chunks: list[bytes] = []
+        size = 0
+        async for chunk in response.aiter_bytes():
+            size += len(chunk)
+            if size > MAX_DOWNLOAD:
+                raise ProviderError("bad_request", "picture too large")
+            chunks.append(chunk)
+        data = b"".join(chunks)
+        kind = response.headers.get("content-type", "")
+
+    if response.status_code >= 400:
+        message = ""
+        try:
+            errors = json.loads(data).get("errors") or []
+            message = "; ".join(str(error.get("message", "")) for error in errors if isinstance(error, dict))
+        except (ValueError, AttributeError):
+            pass
+        raise ProviderError(classify_status(response.status_code), message[:200])
+    # Some models send the picture itself, others JSON with it in base64
+    if kind.startswith("image/"):
+        return data
+    try:
+        parsed = json.loads(data)
+    except ValueError as error:
+        raise ProviderError("error", "Cloudflare returned something that is not a picture") from error
+    result = parsed.get("result", parsed) if isinstance(parsed, dict) else {}
+    image = result.get("image") if isinstance(result, dict) else None
+    if not isinstance(image, str):
+        raise ProviderError("content_filter", "no picture returned")
+    return base64.b64decode(image)
+
+
+def classify_status(status: int) -> str:
+    if status in (401, 403):
+        return "auth"
+    if status == 404:
+        return "model"
+    if status == 429:
+        return "rate_limit"
+    if status >= 500:
+        return "unavailable"
+    return "bad_request"
+
+
 def _fake(prompt: str, aspect: str) -> Image.Image:
     width, height = (1200, 675) if aspect == "landscape" else (800, 800)
     image = Image.new("RGB", (width, height), (76, 47, 199))
@@ -139,6 +212,8 @@ async def generate_picture(config: ModelConfig, prompt: str, aspect: str = "land
         raw = await _google(config, prompt, aspect)
     elif config.provider == "huggingface":
         raw = await _huggingface(config, prompt, aspect)
+    elif config.provider == "cloudflare":
+        raw = await _cloudflare(config, prompt, aspect)
     else:
         raise ProviderError("not_supported", f"{config.provider} cannot make pictures here")
     try:
