@@ -1,0 +1,10 @@
+# The CLI does not read .gitignore. A local .env would turn on the fake provider and the local secret in production.
+.env
+.env.*
+.venv
+.vercel
+__pycache__
+.pytest_cache
+.ruff_cache
+tests
+evals/documents.json

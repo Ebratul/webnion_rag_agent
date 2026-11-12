@@ -67,7 +67,7 @@ EVAL_PROVIDER=openai EVAL_MODEL=gpt-5-mini EVAL_API_KEY=... uv run python -m eva
 
 ## Deploy
 
-A Vercel project with this folder as its root. `vercel.json` sets the Singapore region and a five-minute limit.
+A Vercel project with this folder as its root. `vercel.json` sets the Singapore region; Vercel's FastAPI preset sends every path to the app, and functions get five minutes by default.
 Set `AGENT_SHARED_SECRET` in the project's environment variables; provider, Pinecone and LangSmith keys are entered in the
 admin panel, not here.
 
