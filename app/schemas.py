@@ -195,7 +195,7 @@ class WriteRequest(OutlineRequest):
     outline: Outline
     languages: list[Locale] = Field(default_factory=lambda: ["en"], min_length=1, max_length=2)
     max_pictures: int = Field(default=3, ge=0, le=6)
-    picture_style: Annotated[str, StringConstraints(strip_whitespace=True, max_length=300)] = ""
+    picture_style: Annotated[str, StringConstraints(strip_whitespace=True, max_length=600)] = ""
 
 
 class ImageRequest(Strict):

@@ -29,6 +29,9 @@ def test_write_returns_a_draft_and_picture_plan(client):
     assert result["post"]["slug"]
     assert 1 <= len(result["pictures"]) <= 2
     assert result["pictures"][0]["slot"] == "cover"
+    # Every prompt carries the shared art direction and the quality rules, whatever the model wrote
+    assert all("Art direction:" in picture["prompt"] and "No text, letters" in picture["prompt"] for picture in result["pictures"])
+    assert all(len(picture["prompt"]) <= 1900 for picture in result["pictures"])
 
 
 def test_translate_keeps_pictures(client):
@@ -109,3 +112,19 @@ def test_providers_build_without_network():
         built = asyncio.run(build_chat_model(ChatModelConfig(provider=provider, model=model, api_key="test-key")))
         assert built is not None
         assert "temperature" not in {key for key, value in built.__dict__.items() if value is not None and key == "temperature"} or provider != "anthropic"
+
+
+def test_pictures_are_planned_from_what_each_section_says():
+    from app.graphs.blog_writer import full_prompt, section_excerpts
+    from app.graphs.prompts import pictures_prompt
+
+    article = "## Trust\n\nCustomers in Dhaka check reviews before paying with bKash.\n\n- One\n\n## Speed\n\nSlow pages lose buyers on mobile data."
+    excerpts = section_excerpts(article, 3)
+    assert excerpts[0].startswith("Customers in Dhaka check reviews")
+    assert excerpts[1] == "Slow pages lose buyers on mobile data."
+    assert excerpts[2] == ""
+    prompt = pictures_prompt("Five mistakes", "Practical fixes", "New founders", list(zip(["Trust", "Speed", "Growth"], excerpts, strict=True)), 3, "")
+    assert "Customers in Dhaka check reviews" in prompt and "art director" in prompt
+    assert full_prompt("A shop owner at a counter.", "Warm film photography.").startswith(
+        "A shop owner at a counter. Art direction: Warm film photography. Premium editorial quality"
+    )

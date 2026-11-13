@@ -147,16 +147,43 @@ Keep the format exactly: lines starting with "## " stay headings, lines starting
 Return only the translation."""
 
 
-def pictures_prompt(title: str, headings: list[str], count: int, style: str) -> str:
-    plan = "\n".join(f"{number}. {_escape(heading)}" for number, heading in enumerate(headings))
-    return f"""Article: {_escape(title)}
-Sections (numbered from 0):
-{plan}
+# Added to every picture prompt by the code, so the quality rules never depend on the model remembering them
+PICTURE_RULES = (
+    "Premium editorial quality: sharp focus, realistic light and materials, refined colour grading, balanced composition with clean "
+    "negative space. No text, letters, numbers, captions, signs, logos, watermarks or readable screens. No real brands, products, "
+    "companies or well-known people. Natural hands and faces."
+)
 
-Plan {count} pictures: one cover picture, then up to {max(count - 1, 0)} pictures for the most visual sections (give each section's number).
-For each, write a prompt for a picture generator describing a modern editorial illustration or photo, and short alt text for screen readers.
-The pictures must not contain any text, letters, logos, brand names, real people's faces or real companies' work.
-{("Visual style: " + _escape(style)) if style else "Visual style: clean, modern, soft natural light, a calm purple and warm orange palette."}"""
+DEFAULT_PICTURE_STYLE = (
+    "Modern editorial photography for a premium business magazine: soft natural window light, shallow depth of field, calm and "
+    "uncluttered settings, warm neutral tones with subtle accents of the brand colour."
+)
+
+
+def pictures_prompt(title: str, angle: str, audience: str, sections: list[tuple[str, str]], count: int, style: str) -> str:
+    plan = "\n".join(f"{number}. {_escape(heading)}: {_escape(excerpt)}" for number, (heading, excerpt) in enumerate(sections))
+    return f"""You are the art director of a premium business blog. Plan pictures that belong to this article and nowhere else.
+
+<article>
+Title: {_escape(title)}
+Angle: {_escape(angle)}
+Readers: {_escape(audience) or "business owners"}
+Sections, numbered from 0, with how each begins:
+{plan}
+</article>
+
+Plan {count} picture(s):
+1. style: one art direction for the whole set (medium, lighting, colour palette, mood), so every picture looks like part of one
+   series. Start from this house style and adapt it to the topic: {_escape(style or DEFAULT_PICTURE_STYLE)}
+2. cover: the article's main idea as one clear, striking scene or visual metaphor. Wide 16:9 frame, the subject off-centre with calm
+   space around it, readable at a small size.
+3. sections: up to {max(count - 1, 0)} picture(s) for the sections that gain most from one. Each shows something concrete from that
+   section (the people, place, action or object it talks about), never a generic office or handshake. Give the section's number.
+
+Each prompt: 40 to 90 words describing one scene: subject and action, setting, composition and camera angle, lighting and colours.
+Do not repeat the style in each prompt; it is added for you. When the article is about a country or city, the setting and people
+fit that place. Never ask for text, signs, screens with words, logos, brand names or real people.
+Each alt: 8 to 20 words saying plainly what the picture shows, for screen readers."""
 
 
 def json_instruction(schema: type[BaseModel]) -> str:

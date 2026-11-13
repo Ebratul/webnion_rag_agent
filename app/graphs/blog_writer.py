@@ -18,8 +18,10 @@ from langgraph.graph import END, START, StateGraph
 from pydantic import BaseModel, ValidationError
 
 from app.graphs.prompts import (
+    DEFAULT_PICTURE_STYLE,
     EDIT_SYSTEM,
     LENGTHS,
+    PICTURE_RULES,
     TRANSLATE_SYSTEM,
     json_instruction,
     outline_prompt,
@@ -60,6 +62,7 @@ class SectionPicture(BaseModel):
 
 
 class PicturePlan(BaseModel):
+    style: str = ""
     cover: CoverPicture
     sections: list[SectionPicture]
 
@@ -270,14 +273,11 @@ async def plan_pictures(state: WriteState) -> WriteState:
         return {"pictures": None}
     get_stream_writer()({"type": "progress", "step": "pictures", "message": "Planning the pictures"})
     headings = [section.heading for section in request.outline.sections]
-    model = await build_chat_model(request.writing_model, max_tokens=2048, timeout=90)
+    sections = list(zip(headings, section_excerpts(state["article"], len(headings)), strict=True))
+    model = await build_chat_model(request.writing_model, max_tokens=3000, timeout=90)
+    prompt = pictures_prompt(request.outline.title, request.outline.angle, request.brief.audience, sections, request.max_pictures, request.picture_style)
     try:
-        plan = await structured(
-            model,
-            PicturePlan,
-            [HumanMessage(pictures_prompt(request.outline.title, headings, request.max_pictures, request.picture_style))],
-            request.writing_model.structured,
-        )
+        plan = await structured(model, PicturePlan, [HumanMessage(prompt)], request.writing_model.structured)
     except ProviderError as error:
         if error.code in ("auth", "model"):
             raise
@@ -304,17 +304,31 @@ def _build_write_graph() -> Any:
 blog_writer = _build_write_graph()
 
 
-def _pictures_out(plan: PicturePlan | None, sections: int, limit: int) -> list[dict[str, Any]]:
+def section_excerpts(article: str, count: int, length: int = 320) -> list[str]:
+    """How each "## " section of the article begins, so a picture can show what the section is really about."""
+    bodies = [part.split("\n", 1)[1] if "\n" in part else "" for part in re.split(r"(?m)^## ", article)[1:]]
+    excerpts = [re.sub(r"\s+", " ", re.sub(r"(?m)^- ", "", body)).strip()[:length] for body in bodies]
+    return (excerpts + [""] * count)[:count]
+
+
+def full_prompt(prompt: str, style: str) -> str:
+    """The scene, then the shared art direction, then the quality rules, within what every provider accepts."""
+    parts = [prompt.strip().rstrip("."), f"Art direction: {style.strip().rstrip('.')}" if style.strip() else "", PICTURE_RULES]
+    return ". ".join(part for part in parts if part)[:1900]
+
+
+def _pictures_out(plan: PicturePlan | None, sections: int, limit: int, house_style: str = "") -> list[dict[str, Any]]:
     if plan is None or limit == 0:
         return []
-    pictures = [{"slot": "cover", "prompt": plan.cover.prompt[:1500], "alt": plan.cover.alt[:200]}]
+    style = plan.style or house_style or DEFAULT_PICTURE_STYLE
+    pictures = [{"slot": "cover", "prompt": full_prompt(plan.cover.prompt, style), "alt": plan.cover.alt[:200]}]
     used: set[int] = set()
     for picture in plan.sections:
         if len(pictures) >= limit:
             break
         if 0 <= picture.section < sections and picture.section not in used:
             used.add(picture.section)
-            pictures.append({"slot": picture.section, "prompt": picture.prompt[:1500], "alt": picture.alt[:200]})
+            pictures.append({"slot": picture.section, "prompt": full_prompt(picture.prompt, style), "alt": picture.alt[:200]})
     return pictures
 
 
@@ -337,7 +351,11 @@ async def run_write(request: WriteRequest):
             "seo_description": seo_fields.meta_description.strip()[:160],
             "tags": [re.sub(r"\s+", " ", tag.strip().lower())[:40] for tag in seo_fields.tags if tag.strip()][:6],
         }
-        yield {"type": "result", "post": post, "pictures": _pictures_out(final.get("pictures"), len(request.outline.sections), request.max_pictures)}
+        yield {
+            "type": "result",
+            "post": post,
+            "pictures": _pictures_out(final.get("pictures"), len(request.outline.sections), request.max_pictures, request.picture_style),
+        }
     except Exception as error:  # noqa: BLE001
         yield {"type": "error", **classify(error, request.writing_model.api_key.get_secret_value()).as_dict()}
 
